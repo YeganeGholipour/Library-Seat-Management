@@ -18,26 +18,31 @@ class Seat(models.Model):
     hall = models.ForeignKey(Hall, on_delete=models.CASCADE, related_name='seats')
     have_charger = models.CharField(max_length=5, choices=HaveChargerChoices.choices, default=HaveChargerChoices.FALSE)
 
+from django.core.exceptions import ValidationError
+
 class Reservation(models.Model):
-    seat = models.ForeignKey(Seat, on_delete=models.CASCADE, related_name='reservation')
+    seat = models.ForeignKey(Seat, on_delete=models.CASCADE, related_name='reservations')
     start = models.TimeField()
     finish = models.TimeField()
     user = models.ForeignKey(CustomUser, on_delete=models.CASCADE)
 
     class Meta:
-        constraint = [
+        constraints = [
             models.CheckConstraint(
-                check=models.Q(start__lt=models.f('finish')),
+                check=models.Q(start__lt=models.F('finish')),
                 name='check_start_before_finish'
             )
         ]
 
-    def save(self, *args, **kwargs):
+    def clean(self):
         overlapping_reservations = Reservation.objects.filter(
             seat=self.seat,
             start__lt=self.finish,
-            finish_gt=self.start
+            finish__gt=self.start
         ).exists()
         if overlapping_reservations:
-            raise ValueError("This seat is already reserved during the selected time period.")
+            raise ValidationError("This seat is already reserved during the selected time period.")
+
+    def save(self, *args, **kwargs):
+        self.clean()  # Call the clean method to perform validation
         super().save(*args, **kwargs)
